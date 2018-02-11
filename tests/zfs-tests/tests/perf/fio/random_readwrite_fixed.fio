@@ -10,15 +10,18 @@
 #
 
 #
-# Copyright (c) 2015, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2017 by Delphix. All rights reserved.
 #
 
 [global]
 filename_format=file$jobnum
+nrfiles=16
 group_reporting=1
 fallocate=0
+overwrite=0
 thread=1
-rw=write
+rw=randrw
+rwmixread=70
 time_based=1
 directory=${DIRECTORY}
 runtime=${RUNTIME}
@@ -27,7 +30,6 @@ ioengine=psync
 sync=${SYNC_TYPE}
 direct=${DIRECT}
 numjobs=${NUMJOBS}
-filesize=${FILESIZE}
 buffer_compress_percentage=66
 buffer_compress_chunk=4096
 
