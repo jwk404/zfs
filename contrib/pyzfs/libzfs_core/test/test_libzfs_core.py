@@ -2626,13 +2626,15 @@ class ZFSTest(unittest.TestCase):
             packed_size = int(tokens[2], 16)
             compressed_nvs = tokens[3]
             # Validate resume token
-            self.assertEqual(version, '1')  # ZFS_SEND_RESUME_TOKEN_VERSION
-            payload = zlib.decompress(str(bytearray.fromhex(compressed_nvs)))
+            self.assertEqual(version, b'1')  # ZFS_SEND_RESUME_TOKEN_VERSION
+            payload = (
+                zlib.decompress(bytearray.fromhex(compressed_nvs.decode()))
+            )
             self.assertEqual(len(payload), packed_size)
             # Unpack
             resume_values = packed_nvlist_out(payload, packed_size)
-            resumeobj = resume_values.get('object')
-            resumeoff = resume_values.get('offset')
+            resumeobj = resume_values.get(b'object')
+            resumeoff = resume_values.get(b'offset')
             with tempfile.NamedTemporaryFile(suffix='.ztream') as rstream:
                 lzc.lzc_send_resume(
                     src, None, rstream.fileno(), None, resumeobj, resumeoff)
@@ -2669,19 +2671,21 @@ class ZFSTest(unittest.TestCase):
             # format: <version>-<cksum>-<packed-size>-<compressed-payload>
             token = dstfs.getProperty("receive_resume_token")
             self.assertNotEqual(token, '-')
-            tokens = token.split('-')
+            tokens = token.split(b'-')
             self.assertEqual(len(tokens), 4)
             version = tokens[0]
             packed_size = int(tokens[2], 16)
             compressed_nvs = tokens[3]
             # Validate resume token
-            self.assertEqual(version, '1')  # ZFS_SEND_RESUME_TOKEN_VERSION
-            payload = zlib.decompress(str(bytearray.fromhex(compressed_nvs)))
+            self.assertEqual(version, b'1')  # ZFS_SEND_RESUME_TOKEN_VERSION
+            payload = (
+                zlib.decompress(bytearray.fromhex(compressed_nvs.decode()))
+            )
             self.assertEqual(len(payload), packed_size)
             # Unpack
             resume_values = packed_nvlist_out(payload, packed_size)
-            resumeobj = resume_values.get('object')
-            resumeoff = resume_values.get('offset')
+            resumeobj = resume_values.get(b'object')
+            resumeoff = resume_values.get(b'offset')
             with tempfile.NamedTemporaryFile(suffix='.ztream') as rstream:
                 lzc.lzc_send_resume(
                     snap2, snap1, rstream.fileno(), None, resumeobj, resumeoff)
@@ -4197,7 +4201,7 @@ class _Filesystem(object):
 
     def getFilesystem(self):
         self._fs_id += 1
-        fsname = self._name + b'/fs' + bytes(self._fs_id)
+        fsname = self._name + b'/fs' + str(self._fs_id).encode()
         fs = _Filesystem(fsname)
         self._children.append(fs)
         return fs
@@ -4212,7 +4216,7 @@ class _Filesystem(object):
         return output.strip()
 
     def _makeSnapName(self, i):
-        return self._name + b'@snap' + bytes(i)
+        return self._name + b'@snap' + str(i).encode()
 
     def getSnap(self):
         self._snap_id += 1
