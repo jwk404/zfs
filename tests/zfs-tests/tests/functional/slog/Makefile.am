@@ -1,5 +1,7 @@
 pkgdatadir = $(datadir)/@PACKAGE@/zfs-tests/tests/functional/slog
 dist_pkgdata_SCRIPTS = \
+	embedded_slog_count.ksh \
+	embedded_slog_removal.ksh \
 	setup.ksh \
 	cleanup.ksh \
 	slog_001_pos.ksh \

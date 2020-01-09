@@ -25,7 +25,7 @@
 #
 
 #
-# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2020 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -154,4 +154,185 @@ function verify_slog_device
 	log_note "Can not find device: $device"
 
 	return 1
+}
+
+function get_embedded_slog_devices
+{
+	typeset pool=$1
+	typeset devices
+	typeset cmd
+
+	# Note that the filter operator uses '>' because sdb does not
+	# yet support '!='
+	cmd="spa $pool | vdev | filter obj.vdev_log_mg > 0 | member vdev_path"
+
+	devices=$(echo "$cmd" | sdb -k 2>/dev/null | \
+	    sed -n 's/.*\"\(.*\)\"$/\1/p')
+
+	echo $devices
+}
+
+function get_embedded_slog_count
+{
+	typeset pool=$1
+	typeset count
+
+	count=$(get_embedded_slog_devices $pool | wc -w)
+
+	echo $count
+}
+
+# This test is a direct adaptation of the ziltest.sh
+# script for the ZFS Test Suite.
+function ziltest
+{
+	typeset pool=$1
+	typeset dataset=$2
+	typeset file_dev_dir=$3
+	typeset mntpt=$(get_prop mountpoint $dataset)
+
+	typeset tx_list="TX_CREATE TX_MKDIR TX_MKXATTR TX_SYMLINK TX_REMOVE \
+	    TX_RMDIR TX_LINK TX_RENAME TX_WRITE TX_TRUNCATE TX_SETATTR"
+
+	#
+	# This dd command works around an issue where ZIL records aren't created
+	# after freezing the pool unless a ZIL header already exists. Create a
+	# file synchronously to force ZFS to write one out.
+	#
+	log_must dd if=/dev/zero of=$mntpt/sync \
+	    conv=fdatasync,fsync bs=1 count=1
+
+	#
+	# 2. Freeze the test fs
+	#
+	log_must zpool freeze $pool
+
+	#
+	# 3. Run various user commands that create files, directories and ACLs
+	#
+
+	# TX_CREATE
+	log_must touch $mntpt/a
+
+	# TX_RENAME
+	log_must mv $mntpt/a $mntpt/b
+
+	# TX_SYMLINK
+	log_must touch $mntpt/c
+	log_must ln -s $mntpt/c $mntpt/d
+
+	# TX_LINK
+	log_must touch $mntpt/e
+	log_must ln $mntpt/e $mntpt/f
+
+	# TX_MKDIR
+	log_must mkdir $mntpt/dir_to_delete
+
+	# TX_RMDIR
+	log_must rmdir $mntpt/dir_to_delete
+
+	# Create a simple validation payload
+	log_must mkdir -p $TESTDIR
+	log_must dd if=/dev/urandom of=$mntpt/payload bs=1k count=8
+	log_must eval "sha256sum -b $mntpt/payload >$TESTDIR/checksum"
+
+	# TX_WRITE (small file with ordering)
+	log_must mkfile 1k $mntpt/small_file
+	log_must mkfile 512b $mntpt/small_file
+
+	# TX_CREATE, TX_MKDIR, TX_REMOVE, TX_RMDIR
+	log_must cp -R /usr/share/dict $mntpt
+	log_must rm -rf $mntpt/dict
+
+	# TX_SETATTR
+	log_must touch $mntpt/setattr
+	log_must chmod 567 $mntpt/setattr
+	log_must chgrp root $mntpt/setattr
+	log_must touch -cm -t 201311271200 $mntpt/setattr
+
+	# TX_TRUNCATE (to zero)
+	log_must mkfile 4k $mntpt/truncated_file
+	log_must truncate -s 0 $mntpt/truncated_file
+
+	# TX_WRITE (large file)
+	log_must dd if=/dev/urandom of=$mntpt/large bs=128k count=64 oflag=sync
+
+	# Write zeros, which compress to holes, in the middle of a file
+	log_must dd if=/dev/urandom of=$mntpt/holes.1 bs=128k count=8
+	log_must dd if=/dev/zero of=$mntpt/holes.1 bs=128k count=2
+
+	log_must dd if=/dev/urandom of=$mntpt/holes.2 bs=128k count=8
+	log_must dd if=/dev/zero of=$mntpt/holes.2 bs=128k count=2 seek=2
+
+	log_must dd if=/dev/urandom of=$mntpt/holes.3 bs=128k count=8
+	log_must dd if=/dev/zero of=$mntpt/holes.3 bs=128k count=2 \
+	   seek=2 conv=notrunc
+
+	# TX_MKXATTR
+	log_must mkdir $mntpt/xattr.dir
+	log_must touch $mntpt/xattr.file
+	log_must set_xattr fileattr HelloWorld $mntpt/xattr.dir
+	log_must set_xattr tmpattr HelloWorld $mntpt/xattr.dir
+	log_must rm_xattr fileattr $mntpt/xattr.dir
+
+	log_must set_xattr fileattr HelloWorld $mntpt/xattr.file
+	log_must set_xattr tmpattr HelloWorld $mntpt/xattr.file
+	log_must rm_xattr tmpattr $mntpt/xattr.file
+
+	#
+	# 4. Copy the test fs to temporary location (TESTDIR/copy)
+	#
+	log_must mkdir -p $TESTDIR/copy
+	log_must cp -a $mntpt/* $TESTDIR/copy/
+
+	#
+	# 5. Unmount filesystem and export the pool
+	#
+	# At this stage the test fs is empty again and frozen, the intent log
+	# contains a complete set of deltas to replay.
+	#
+	log_must zfs unmount $dataset
+
+	log_note "Verify transactions to replay:"
+	log_must zdb -iv $dataset
+
+	# Verify that zdb observes records for each type of data recorded
+	typeset tx_seen=$(zdb -iv $dataset | \
+	    awk '{if(n == 1) print $0} /Total/ {n=1}')
+	for i in $tx_list; do
+		echo $tx_seen | grep -q $i || \
+		    log_fail "zdb did not find record type $i"
+	done
+
+	log_must zpool export $pool
+
+	#
+	# 6. Remount the test fs <which replays the intent log>
+	#
+	# Import the pool to unfreeze it and claim log blocks.  It has to be
+	# `zpool import -f` because we can't write a frozen pool's labels!
+	#
+	[[ -n $file_dev_dir ]] && file_dev_dir="-d $file_dev_dir"
+	log_must zpool import -f $file_dev_dir $pool
+
+	#
+	# 7. Compare the test fs against the TESTDIR/copy
+	#
+	log_note "Verify current block usage:"
+	log_must zdb -bcv $pool
+
+	log_note "Verify copy of xattrs:"
+	log_must ls_xattr /$TESTPOOL/$TESTFS/xattr.dir
+	log_must ls_xattr /$TESTPOOL/$TESTFS/xattr.file
+
+	log_note "Verify working set diff:"
+	log_must diff -r $mntpt $TESTDIR/copy
+
+	log_note "Verify file checksum:"
+	log_must sha256sum -c $TESTDIR/checksum
+
+	#
+	# Cleaunup the data left in $TESTDIR
+	#
+	rm -rf $TESTDIR/*
 }
