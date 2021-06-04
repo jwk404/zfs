@@ -48,6 +48,8 @@ ITERATIONS=1
 ZFS_DBGMSG="$STF_SUITE/callbacks/zfs_dbgmsg.ksh"
 ZFS_DMESG="$STF_SUITE/callbacks/zfs_dmesg.ksh"
 UNAME=$(uname -s)
+ZOA_LOG="/var/zoa.log"
+ZTS_CREDENTIALS_FILE="/etc/zfs/zpool_credentials"
 
 # Override some defaults if on FreeBSD
 if [ "$UNAME" = "FreeBSD" ] ; then
@@ -575,10 +577,49 @@ msg "STF_SUITE:       $STF_SUITE"
 msg "STF_PATH:        $STF_PATH"
 
 #
-# No DISKS have been provided so a basic file or loopback based devices
-# must be created for the test suite to use.
+# If ZTS_OBJECT_STORE is set, it implies that we are using object storage.
+# Hence, no need to specify disks.
 #
-if [ -z "${DISKS}" ]; then
+# If ZTS_OBJECT_STORE is not set and DISKS have not been provided, a basic
+# file or loopback based devices must be created for the test suite to use.
+#
+
+if [ -n "$ZTS_OBJECT_STORE" ]; then
+	# No need to specify disks if we're using object storage, but
+	# verify the required environment variables are set.
+	[ -n "$ZTS_OBJECT_ENDPOINT" ] || fail "ZTS_OBJECT_ENDPOINT is unset."
+	[ -n "$ZTS_BUCKET_NAME" ] || fail "ZTS_BUCKET_NAME is unset."
+	[ -n "$ZTS_ACCESS_ID" ] || fail "ZTS_ACCESS_ID is unset."
+	[ -n "$ZTS_ACCESS_KEY" ] || fail "ZTS_ACCESS_KEY is unset."
+	[ -n "$ZTS_REGION" ] || fail "ZTS_REGION is unset."
+	# XXX should the suite choose a location in a tmp file/directory?
+	# If / when `env` is an option, we should use that to avoid persisting
+	# this data.
+	[ -n "$ZTS_CREDENTIALS_FILE" ] || fail "ZTS_CREDENTIALS_FILE is unset."
+
+	#
+	# Set RUST_BACKTRACE environment variable to generate proper stack
+	# traces for zfs-object-agent service crash.
+	#
+	export RUST_BACKTRACE=1
+
+	#
+	# Ensure that the log file doesn't exist before the run and then
+	# start the agent.
+	#
+	if [ -f "$ZOA_LOG" ]; then
+		sudo rm -f $ZOA_LOG
+	fi
+	sudo /sbin/zfs_object_agent -vv \
+	    --output-file=$ZOA_LOG >/dev/null 2>&1 &
+
+	#
+	# Create the ZTS credentials file and export the location as an
+	# environment variable.
+	#
+	echo "$ZTS_ACCESS_ID:$ZTS_ACCESS_KEY" | sudo tee $ZTS_CREDENTIALS_FILE
+	export ZTS_CREDENTIALS_FILE=$ZTS_CREDENTIALS_FILE
+elif [ -z "${DISKS}" ]; then
 	#
 	# Create sparse files for the test suite.  These may be used
 	# directory or have loopback devices layered on them.
@@ -619,8 +660,10 @@ if [ -z "${DISKS}" ]; then
 	fi
 fi
 
-NUM_DISKS=$(echo "${DISKS}" | awk '{print NF}')
-[ "$NUM_DISKS" -lt 3 ] && fail "Not enough disks ($NUM_DISKS/3 minimum)"
+if [ -z "$ZTS_OBJECT_STORE" ]; then
+	NUM_DISKS=$(echo "${DISKS}" | awk '{print NF}')
+	[ "$NUM_DISKS" -lt 3 ] && fail "Not enough disks ($NUM_DISKS/3 minimum)"
+fi
 
 #
 # Disable SELinux until the ZFS Test Suite has been updated accordingly.
@@ -637,17 +680,20 @@ if [ -e /sys/module/zfs/parameters/zfs_dbgmsg_enable ]; then
 	sudo /bin/sh -c "echo 0 >/proc/spl/kstat/zfs/dbgmsg"
 fi
 
-msg "FILEDIR:         $FILEDIR"
-msg "FILES:           $FILES"
-msg "LOOPBACKS:       $LOOPBACKS"
-msg "DISKS:           $DISKS"
-msg "NUM_DISKS:       $NUM_DISKS"
-msg "FILESIZE:        $FILESIZE"
-msg "ITERATIONS:      $ITERATIONS"
-msg "TAGS:            $TAGS"
-msg "STACK_TRACER:    $STACK_TRACER"
-msg "Keep pool(s):    $KEEP"
-msg "Missing util(s): $STF_MISSING_BIN"
+msg "FILEDIR:               $FILEDIR"
+msg "FILES:                 $FILES"
+msg "LOOPBACKS:             $LOOPBACKS"
+msg "DISKS:                 $DISKS"
+msg "NUM_DISKS:             $NUM_DISKS"
+msg "FILESIZE:              $FILESIZE"
+msg "ITERATIONS:            $ITERATIONS"
+msg "TAGS:                  $TAGS"
+msg "STACK_TRACER:          $STACK_TRACER"
+msg "Keep pool(s):          $KEEP"
+msg "ZTS_OBJECT_STORE:      $ZTS_OBJECT_STORE"
+msg "RUST_BACKTRACE:        $RUST_BACKTRACE"
+msg "ZTS_CREDENTIALS_FILE:  $ZTS_CREDENTIALS_FILE"
+msg "Missing util(s):       $STF_MISSING_BIN"
 msg ""
 
 export STF_TOOLS

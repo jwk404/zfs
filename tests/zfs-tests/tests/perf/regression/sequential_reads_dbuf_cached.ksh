@@ -32,6 +32,8 @@
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/perf/perf.shlib
 
+log_unsupported "get_max_dbuf_cache_size is currently broken."
+
 function cleanup
 {
 	# kill fio and iostat

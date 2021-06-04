@@ -90,8 +90,10 @@ function do_fio_run_impl
 
 	if $clear_cache; then
 		# Clear the ARC
-		zpool export $PERFPOOL
-		zpool import $PERFPOOL
+		zinject -a
+		# XXX Is there still a reason to export/import?
+		# zpool export $PERFPOOL
+		# zpool import $PERFPOOL
 	fi
 
 	if [[ -n $ZINJECT_DELAYS ]]; then

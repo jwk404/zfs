@@ -1739,17 +1739,21 @@ function verify_runnable # zone limit
 	return 0
 }
 
+function use_object_store
+{
+	[[ -n $ZTS_OBJECT_STORE ]]
+}
+
 # Return 0 if create successfully or the pool exists; $? otherwise
 # Note: In local zones, this function should return 0 silently.
 #
 # $1 - pool name
 # $2-n - [keyword] devs_list
 
+# XXX needs work
 function create_pool #pool devs_list
 {
 	typeset pool=${1%%/*}
-
-	shift
 
 	if [[ -z $pool ]]; then
 		log_note "Missing pool name."
@@ -1758,12 +1762,24 @@ function create_pool #pool devs_list
 
 	if poolexists $pool ; then
 		destroy_pool $pool
+		[[ -d /$pool ]] && rm -rf /$pool
 	fi
 
-	if is_global_zone ; then
-		[[ -d /$pool ]] && rm -rf /$pool
+	if ! is_global_zone ; then
+		return 0
+	fi
+
+	if use_object_store; then
+		log_must zpool create -f \
+		    -o object-endpoint=$ZTS_OBJECT_ENDPOINT \
+		    -o object-region=$ZTS_REGION \
+		    -o object-credentials-location=file://$ZTS_CREDENTIALS_FILE \
+		    $pool s3 $ZTS_BUCKET_NAME
+	else
+		shift
 		log_must zpool create -f $pool $@
 	fi
+
 
 	return 0
 }
@@ -3278,22 +3294,15 @@ function get_rootpool
 }
 
 #
-# Get the word numbers from a string separated by white space
-#
-function get_word_count
-{
-	echo $1 | wc -w
-}
-
-#
 # To verify if the require numbers of disks is given
 #
 function verify_disk_count
 {
 	typeset -i min=${2:-1}
 
-	typeset -i count=$(get_word_count "$1")
+	use_object_store && return
 
+	typeset -i count=$(wc -w "$1")
 	if ((count < min)); then
 		log_untested "A minimum of $min disks is required to run." \
 			" You specified $count disk(s)"

@@ -41,7 +41,8 @@ log_onexit cleanup
 recreate_perf_pool
 
 # Aim to fill the pool to 50% capacity while accounting for a 3x compressratio.
-export TOTAL_SIZE=$(($(get_prop avail $PERFPOOL) * 3 / 2))
+# export TOTAL_SIZE=$(($(get_prop avail $PERFPOOL) * 3 / 2))
+export TOTAL_SIZE=137438953472
 
 if [[ -n $PERF_REGRESSION_WEEKLY ]]; then
 	export PERF_RUNTIME=${PERF_RUNTIME:-$PERF_RUNTIME_WEEKLY}
