@@ -16,12 +16,12 @@
 
 . $STF_SUITE/include/libtest.shlib
 
-# If neither is specified, do a nightly run.
-[[ -z $PERF_REGRESSION_WEEKLY ]] && export PERF_REGRESSION_NIGHTLY=1
-
-# Default runtime for each type of test run.
-export PERF_RUNTIME_WEEKLY=$((30 * 60))
-export PERF_RUNTIME_NIGHTLY=$((10 * 60))
+# Defaults common to all the tests in the regression group
+export PERF_RUNTIME=${PERF_RUNTIME:-'180'}
+export PERF_RANDSEED=${PERF_RANDSEED:-'1234'}
+export PERF_COMPPERCENT=${PERF_COMPPERCENT:-'66'}
+export PERF_COMPCHUNK=${PERF_COMPCHUNK:-'4096'}
+export PERF_SYNC_TYPES=${PERF_SYNC_TYPES:-'1'}
 
 # Default to JSON for fio output
 export PERF_FIO_FORMAT=${PERF_FIO_FORMAT:-'json'}
@@ -159,8 +159,6 @@ function do_fio_run_impl
 # set before launching zfstest to override the defaults.
 #
 # PERF_RUNTIME: The time in seconds each fio invocation should run.
-# PERF_RUNTYPE: A human readable tag that appears in logs. The defaults are
-#    nightly and weekly.
 # PERF_NTHREADS: A list of how many threads each fio invocation will use.
 # PERF_SYNC_TYPES: Whether to use (O_SYNC) or not. 1 is sync IO, 0 is async IO.
 # PERF_IOSIZES: A list of blocksizes in which each fio invocation will do IO.
@@ -589,6 +587,14 @@ function pool_to_lun_list
 		done
 	fi
 	echo $lun_list
+}
+
+function print_perf_settings
+{
+	echo "PERF_NTHREADS: $PERF_NTHREADS"
+	echo "PERF_NTHREADS_PER_FS: $PERF_NTHREADS_PER_FS"
+	echo "PERF_SYNC_TYPES: $PERF_SYNC_TYPES"
+	echo "PERF_IOSIZES: $PERF_IOSIZES"
 }
 
 # Create a perf_data directory to hold performance statistics and
