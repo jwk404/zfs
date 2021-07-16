@@ -10,7 +10,7 @@
 #
 
 #
-# Copyright (c) 2015, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2015, 2021 by Delphix. All rights reserved.
 # Copyright (c) 2016, Intel Corporation.
 #
 
@@ -424,22 +424,44 @@ function get_max_arc_size
 	echo $max_arc_size
 }
 
-function get_max_dbuf_cache_size
+function get_arc_target
 {
-	typeset -l max_dbuf_cache_size
+	typeset -l arc_c
+
+	if is_freebsd; then
+		arc_c=$(sysctl -n kstat.zfs.misc.arcstats.c)
+	elif is_illumos; then
+		arc_c=$(dtrace -qn 'BEGIN {
+		    printf("%u\n", `arc_stats.arcstat_c.value.ui64);
+		    exit(0);
+		}')
+	elif is_linux; then
+		arc_c=`awk '$1 == "c" { print $3 }' \
+		    /proc/spl/kstat/zfs/arcstats`
+	fi
+
+	[[ $? -eq 0 ]] || log_fail "get_arc_target failed"
+
+	echo $arc_c
+}
+
+function get_dbuf_cache_size
+{
+	typeset -l dbuf_cache_size dbuf_cache_shift
 
 	if is_illumos; then
-		max_dbuf_cache_size=$(dtrace -qn 'BEGIN {
+		dbuf_cache_size=$(dtrace -qn 'BEGIN {
 		    printf("%u\n", `dbuf_cache_max_bytes);
 		    exit(0);
 		}')
 	else
-		max_dbuf_cache_size=$(get_tunable DBUF_CACHE_MAX_BYTES)
+		dbuf_cache_shift=$(get_tunable DBUF_CACHE_SHIFT)
+		dbuf_cache_size=$(($(get_arc_target) / 2**dbuf_cache_shift))
 	fi
 
-	[[ $? -eq 0 ]] || log_fail "get_max_dbuf_cache_size failed"
+	[[ $? -eq 0 ]] || log_fail "get_dbuf_cache_size failed"
 
-	echo $max_dbuf_cache_size
+	echo $dbuf_cache_size
 }
 
 # Create a file with some information about how this system is configured.

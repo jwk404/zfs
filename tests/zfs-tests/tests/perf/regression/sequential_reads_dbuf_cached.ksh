@@ -47,7 +47,7 @@ recreate_perf_pool
 populate_perf_filesystems
 
 # Ensure the working set can be cached in the dbuf cache.
-export TOTAL_SIZE=$(($(get_max_dbuf_cache_size) * 3 / 4))
+export TOTAL_SIZE=$(($(get_dbuf_cache_size) * 3 / 4))
 
 # Variables for use by fio.
 if [[ -n $PERF_REGRESSION_WEEKLY ]]; then
