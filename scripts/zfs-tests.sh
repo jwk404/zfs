@@ -48,7 +48,7 @@ ITERATIONS=1
 ZFS_DBGMSG="$STF_SUITE/callbacks/zfs_dbgmsg.ksh"
 ZFS_DMESG="$STF_SUITE/callbacks/zfs_dmesg.ksh"
 UNAME=$(uname -s)
-ZOA_LOG="/var/zoa.log"
+ZOA_LOG="/var/tmp/zoa.log"
 ZTS_CREDENTIALS_FILE="/etc/zfs/zpool_credentials"
 
 # Override some defaults if on FreeBSD
@@ -592,10 +592,8 @@ if [ -n "$ZTS_OBJECT_STORE" ]; then
 	[ -n "$ZTS_ACCESS_ID" ] || fail "ZTS_ACCESS_ID is unset."
 	[ -n "$ZTS_ACCESS_KEY" ] || fail "ZTS_ACCESS_KEY is unset."
 	[ -n "$ZTS_REGION" ] || fail "ZTS_REGION is unset."
-	# XXX should the suite choose a location in a tmp file/directory?
-	# If / when `env` is an option, we should use that to avoid persisting
-	# this data.
-	[ -n "$ZTS_CREDENTIALS_FILE" ] || fail "ZTS_CREDENTIALS_FILE is unset."
+	[ -n "$ZTS_CREDENTIALS_PROFILE" ] || \
+	    fail "ZTS_CREDENTIALS_PROFILE is unset."
 
 	#
 	# Set RUST_BACKTRACE environment variable to generate proper stack
@@ -616,9 +614,15 @@ if [ -n "$ZTS_OBJECT_STORE" ]; then
 	#
 	# Create the ZTS credentials file and export the location as an
 	# environment variable.
+	# XXX Hopefully, this will be pre-populated in the future.
 	#
-	echo "$ZTS_ACCESS_ID:$ZTS_ACCESS_KEY" | sudo tee $ZTS_CREDENTIALS_FILE
-	export ZTS_CREDENTIALS_FILE=$ZTS_CREDENTIALS_FILE
+	mkdir -m $HOME/.aws
+	echo "[$ZTS_CREDENTIALS_PROFILE]" | \
+	    sudo tee $HOME/.aws/credentials
+	echo "aws_secret_access_key = $ZTS_ACCESS_KEY" | \
+	    sudo tee $HOME/.aws/credentials
+	echo "aws_access_key_id = $ZTS_ACCESS_ID" | \
+	    sudo tee $HOME/.aws/credentials
 elif [ -z "${DISKS}" ]; then
 	#
 	# Create sparse files for the test suite.  These may be used
@@ -680,20 +684,20 @@ if [ -e /sys/module/zfs/parameters/zfs_dbgmsg_enable ]; then
 	sudo /bin/sh -c "echo 0 >/proc/spl/kstat/zfs/dbgmsg"
 fi
 
-msg "FILEDIR:               $FILEDIR"
-msg "FILES:                 $FILES"
-msg "LOOPBACKS:             $LOOPBACKS"
-msg "DISKS:                 $DISKS"
-msg "NUM_DISKS:             $NUM_DISKS"
-msg "FILESIZE:              $FILESIZE"
-msg "ITERATIONS:            $ITERATIONS"
-msg "TAGS:                  $TAGS"
-msg "STACK_TRACER:          $STACK_TRACER"
-msg "Keep pool(s):          $KEEP"
-msg "ZTS_OBJECT_STORE:      $ZTS_OBJECT_STORE"
-msg "RUST_BACKTRACE:        $RUST_BACKTRACE"
-msg "ZTS_CREDENTIALS_FILE:  $ZTS_CREDENTIALS_FILE"
-msg "Missing util(s):       $STF_MISSING_BIN"
+msg "FILEDIR:                   $FILEDIR"
+msg "FILES:                     $FILES"
+msg "LOOPBACKS:                 $LOOPBACKS"
+msg "DISKS:                     $DISKS"
+msg "NUM_DISKS:                 $NUM_DISKS"
+msg "FILESIZE:                  $FILESIZE"
+msg "ITERATIONS:                $ITERATIONS"
+msg "TAGS:                      $TAGS"
+msg "STACK_TRACER:              $STACK_TRACER"
+msg "Keep pool(s):              $KEEP"
+msg "ZTS_OBJECT_STORE:          $ZTS_OBJECT_STORE"
+msg "RUST_BACKTRACE:            $RUST_BACKTRACE"
+msg "ZTS_CREDENTIALS_PROFILE:   $ZTS_CREDENTIALS_PROFILE"
+msg "Missing util(s):           $STF_MISSING_BIN"
 msg ""
 
 export STF_TOOLS

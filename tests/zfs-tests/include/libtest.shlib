@@ -1773,13 +1773,12 @@ function create_pool #pool devs_list
 		log_must zpool create -f \
 		    -o object-endpoint=$ZTS_OBJECT_ENDPOINT \
 		    -o object-region=$ZTS_REGION \
-		    -o object-credentials-location=file://$ZTS_CREDENTIALS_FILE \
+		    -o object-credentials-profile=$ZTS_CREDENTIALS_PROFILE \
 		    $pool s3 $ZTS_BUCKET_NAME
 	else
 		shift
 		log_must zpool create -f $pool $@
 	fi
-
 
 	return 0
 }
